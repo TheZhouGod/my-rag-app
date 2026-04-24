@@ -1,8 +1,9 @@
-streamlit
-langchain-community
-langchain-text-splitters
-langchain-chroma
-zhipuai
-pypdf
-cryptography
-python-dotenv
+streamlit>=1.36
+langchain>=0.3
+langchain-community>=0.3
+langchain-text-splitters>=0.3
+langchain-chroma>=0.1.4
+chromadb>=0.5.5
+zhipuai>=2.1.5
+pypdf>=4.2
+protobuf>=4.25,<5
