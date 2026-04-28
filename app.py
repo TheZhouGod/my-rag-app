@@ -2,8 +2,9 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 import streamlit as st
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_community.embeddings import ZhipuAIEmbeddings
 from langchain_chroma import Chroma
 from zhipuai import ZhipuAI
@@ -12,15 +13,15 @@ from zhipuai import ZhipuAI
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "你的真实Key")
 CHAT_MODEL = "glm-4.7"   # 换成你账户实际支持的模型
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PDF_PATH = os.path.join(BASE_DIR, "test_doc.pdf")
+MD_PATH = os.path.join(BASE_DIR, "clean_manual.md")
 
 # ================= 📦 构建知识库 =================
 @st.cache_resource
-def build_knowledge_base(pdf_path, mtime):
-    loader = PyPDFLoader(pdf_path)
+def build_knowledge_base(mtime):
+    loader = TextLoader(MD_PATH, encoding="utf-8")
     docs = loader.load()
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    text_splitter = MarkdownHeaderTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = text_splitter.split_documents(docs)
 
     embeddings_model = ZhipuAIEmbeddings(api_key=ZHIPU_API_KEY, model="embedding-3")
@@ -94,12 +95,12 @@ def ask_question(vector_store, history, current_question):
 st.set_page_config(page_title="Pocket 3 智能客服", page_icon="🚁")
 st.title("🚁 大疆 Pocket 3 专属智能客服")
 
-if not os.path.exists(PDF_PATH):
-    st.error(f"找不到 PDF 文件：{PDF_PATH}")
+if not os.path.exists(MD_PATH):
+    st.error(f"找不到 PDF 文件：{MD_PATH}")
     st.stop()
 
-mtime = os.path.getmtime(PDF_PATH)
-my_database = build_knowledge_base(PDF_PATH, mtime)
+mtime = os.path.getmtime(MD_PATH)
+my_database = build_knowledge_base(MD_PATH, mtime)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
