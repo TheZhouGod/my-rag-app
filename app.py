@@ -18,12 +18,28 @@ MD_PATH = os.path.join(BASE_DIR, "clean_manual.md")
 # ================= 📦 构建知识库 =================
 @st.cache_resource
 def build_knowledge_base(md_path, mtime):
-    loader = TextLoader(md_path, encoding="utf-8")
-    docs = loader.load()
+    with open(md_path, "r", encoding="utf-8") as f:
+        markdown_text = f.read()
+    
+    headers_to_split_on = [
+        ("#", "h1"),
+        ("##", "h2"),
+        ("###", "h3"),
+    ]
 
-    text_splitter = MarkdownHeaderTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = text_splitter.split_documents(docs)
+    md_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=headers_to_split_on,
+        strip_headers=False,   # 保留标题文本，方便检索
+    )
 
+    md_chunks = md_splitter.split_text(markdown_text)
+
+    char_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=50,
+    )
+
+    chunks = char_splitter.split_documents(md_chunks)
     embeddings_model = ZhipuAIEmbeddings(api_key=ZHIPU_API_KEY, model="embedding-3")
     vector_store = Chroma.from_documents(
         chunks,
@@ -96,7 +112,7 @@ st.set_page_config(page_title="Pocket 3 智能客服", page_icon="🚁")
 st.title("🚁 大疆 Pocket 3 专属智能客服")
 
 if not os.path.exists(MD_PATH):
-    st.error(f"找不到 PDF 文件：{MD_PATH}")
+    st.error(f"找不到 Markdown 文件：{MD_PATH}")
     st.stop()
 
 mtime = os.path.getmtime(MD_PATH)
