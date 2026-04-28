@@ -2,16 +2,19 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 import streamlit as st
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_text_splitters import MarkdownHeaderTextSplitter
+from langchain_text_splitters import (
+    RecursiveCharacterTextSplitter,
+    MarkdownHeaderTextSplitter,
+)
 from langchain_community.embeddings import ZhipuAIEmbeddings
 from langchain_chroma import Chroma
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
 from zhipuai import ZhipuAI
 
 # ================= 🔧 基础配置 =================
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "你的真实Key")
-CHAT_MODEL = "glm-4.7"   # 换成你账户实际支持的模型
+CHAT_MODEL = "glm-4.7"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MD_PATH = os.path.join(BASE_DIR, "clean_manual.md")
 
@@ -20,97 +23,72 @@ MD_PATH = os.path.join(BASE_DIR, "clean_manual.md")
 def build_knowledge_base(md_path, mtime):
     with open(md_path, "r", encoding="utf-8") as f:
         markdown_text = f.read()
-    
+
     headers_to_split_on = [
         ("#", "h1"),
         ("##", "h2"),
         ("###", "h3"),
     ]
-
     md_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=headers_to_split_on,
-        strip_headers=False,   # 保留标题文本，方便检索
+        strip_headers=False,
     )
-
     md_chunks = md_splitter.split_text(markdown_text)
 
     char_splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
         chunk_overlap=50,
     )
-
     chunks = char_splitter.split_documents(md_chunks)
+
     embeddings_model = ZhipuAIEmbeddings(api_key=ZHIPU_API_KEY, model="embedding-3")
     vector_store = Chroma.from_documents(
         chunks,
         embeddings_model,
-        persist_directory=os.path.join(BASE_DIR, "chroma_db")
+        persist_directory=os.path.join(BASE_DIR, "chroma_db"),
     )
-    return vector_store
+    vector_retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
-def get_standalone_question(client, history, current_question):
-    """结合历史记录，把含糊的追问改写成独立的问题"""
-    if not history:
-        return current_question
-    
-    # 将历史记录格式化为文本
-    history_text = ""
-    for msg in history[-3:]: # 只取最近5轮，防止太长
-        role = "用户" if msg["role"] == "user" else "AI"
-        content = msg["content"][:300]
-        history_text += f"{role}: {content}\n"
+    bm25_retriever = BM25Retriever.from_documents(chunks)
+    bm25_retriever.k = 3
 
-    rewrite_prompt = f"""
-    根据以下对话历史和用户的新问题，将其改写为一个不需要上下文也能听懂的【独立完整问题】。
-    
-    【对话历史】：
-    {history_text}
-    
-    【用户新问题】：{current_question}
-    
-    请直接输出改写后的问题，不要说任何废话。
-    """
-    try:
-        response = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[{"role": "user", "content": rewrite_prompt}],
-        temperature=0.1
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        st.sidebar.warning(f"改写失败，使用原问题：{e}")
-        return current_question
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[bm25_retriever, vector_retriever],
+        weights=[0.5, 0.5],
+    )
+    return ensemble_retriever
 
 
-# ================= 💬 检索与回答 =================
-def ask_question(vector_store, history, current_question):
-    client = ZhipuAI(api_key=ZHIPU_API_KEY, timeout=30.0)
-    
-    # 1. 【新增】重写问题，处理“它”、“那这个”等代词
-    standalone_q = get_standalone_question(client, history, current_question)
-    st.sidebar.info(f"🔍 实际搜索内容：{standalone_q}") # 在侧边栏显示，方便调试观察
+# ================= 💬 检索与回答（不再重写问题） =================
+def ask_question(retriever, current_question):
+    client = ZhipuAI(api_key=ZHIPU_API_KEY, timeout=30.0, max_retries=1)
 
-    # 2. 用重写后的问题去搜数据库
-    docs = vector_store.similarity_search(standalone_q, k=3)
+    st.sidebar.info(f"🔍 实际搜索内容：{current_question}")
+
+    # ✅ 用传进来的 retriever
+    docs = retriever.invoke(current_question)
     context = "\n\n".join([doc.page_content for doc in docs])
 
-    # 3. 组装最终回答的 Prompt
     final_prompt = f"""
     你是一个大疆(DJI)产品的金牌客服。请严格根据下面提供的【参考文档】回答用户的【问题】。
-    
+
     【参考文档】：
     {context}
 
     【问题】：
-    {standalone_q}
+    {current_question}
     """
 
-    response = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[{"role": "user", "content": final_prompt}],
-        temperature=0.1
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[{"role": "user", "content": final_prompt}],
+            temperature=0.1,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ 调用失败：{type(e).__name__}: {e}"
+
 
 # ================= 🎨 前端 =================
 st.set_page_config(page_title="Pocket 3 智能客服", page_icon="🚁")
@@ -121,7 +99,7 @@ if not os.path.exists(MD_PATH):
     st.stop()
 
 mtime = os.path.getmtime(MD_PATH)
-my_database = build_knowledge_base(MD_PATH, mtime)
+my_retriever = build_knowledge_base(MD_PATH, mtime)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -137,7 +115,6 @@ if prompt := st.chat_input("你想查阅关于 Pocket 3 的什么信息？（例
 
     with st.chat_message("assistant"):
         with st.spinner("AI 客服正在疯狂翻阅说明书..."):
-            history_for_rewrite = st.session_state.messages[:-1]
-            answer = ask_question(my_database, history_for_rewrite, prompt)
+            answer = ask_question(my_retriever, prompt)
             st.markdown(answer)
     st.session_state.messages.append({"role": "assistant", "content": answer})
