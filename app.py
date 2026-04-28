@@ -17,8 +17,8 @@ MD_PATH = os.path.join(BASE_DIR, "clean_manual.md")
 
 # ================= 📦 构建知识库 =================
 @st.cache_resource
-def build_knowledge_base(mtime):
-    loader = TextLoader(MD_PATH, encoding="utf-8")
+def build_knowledge_base(md_path, mtime):
+    loader = TextLoader(md_path, encoding="utf-8")
     docs = loader.load()
 
     text_splitter = MarkdownHeaderTextSplitter(chunk_size=500, chunk_overlap=50)
