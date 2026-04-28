@@ -55,9 +55,10 @@ def get_standalone_question(client, history, current_question):
     
     # 将历史记录格式化为文本
     history_text = ""
-    for msg in history[-5:]: # 只取最近5轮，防止太长
+    for msg in history[-3:]: # 只取最近5轮，防止太长
         role = "用户" if msg["role"] == "user" else "AI"
-        history_text += f"{role}: {msg['content']}\n"
+        content = msg["content"][:300]
+        history_text += f"{role}: {content}\n"
 
     rewrite_prompt = f"""
     根据以下对话历史和用户的新问题，将其改写为一个不需要上下文也能听懂的【独立完整问题】。
@@ -69,17 +70,21 @@ def get_standalone_question(client, history, current_question):
     
     请直接输出改写后的问题，不要说任何废话。
     """
-    
-    response = client.chat.completions.create(
+    try:
+        response = client.chat.completions.create(
         model=CHAT_MODEL,
         messages=[{"role": "user", "content": rewrite_prompt}],
         temperature=0.1
-    )
-    return response.choices[0].message.content
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        st.sidebar.warning(f"改写失败，使用原问题：{e}")
+        return current_question
+
 
 # ================= 💬 检索与回答 =================
 def ask_question(vector_store, history, current_question):
-    client = ZhipuAI(api_key=ZHIPU_API_KEY)
+    client = ZhipuAI(api_key=ZHIPU_API_KEY, timeout=30.0)
     
     # 1. 【新增】重写问题，处理“它”、“那这个”等代词
     standalone_q = get_standalone_question(client, history, current_question)
