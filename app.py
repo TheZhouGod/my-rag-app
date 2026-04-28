@@ -16,7 +16,7 @@ from zhipuai import ZhipuAI
 
 # ================= 🔧 基础配置 =================
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "你的真实Key")
-CHAT_MODEL = "glm-4.7"
+CHAT_MODEL = "glm-4.6"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MD_PATH = os.path.join(BASE_DIR, "clean_manual.md")
 
@@ -70,7 +70,7 @@ def build_knowledge_base(md_path, mtime):
 
 # ================= 💬 检索与回答（不再重写问题） =================
 def ask_question(compression_retriever, current_question):
-    client = ZhipuAI(api_key=ZHIPU_API_KEY, timeout=30.0, max_retries=1)
+    client = ZhipuAI(api_key=ZHIPU_API_KEY, timeout=60.0, max_retries=2)
 
     st.sidebar.info(f"🔍 实际搜索内容：{current_question}")
 
