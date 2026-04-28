@@ -10,6 +10,8 @@ from langchain_community.embeddings import ZhipuAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
+from langchain.retrievers.document_compressors import FlashrankRerank
+from langchain.retrievers import ContextualCompressionRetriever
 from zhipuai import ZhipuAI
 
 # ================= 🔧 基础配置 =================
@@ -47,26 +49,33 @@ def build_knowledge_base(md_path, mtime):
         embeddings_model,
         persist_directory=os.path.join(BASE_DIR, "chroma_db"),
     )
-    vector_retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    vector_retriever = vector_store.as_retriever(search_kwargs={"k": 15})
 
     bm25_retriever = BM25Retriever.from_documents(chunks)
-    bm25_retriever.k = 3
+    bm25_retriever.k = 15
 
     ensemble_retriever = EnsembleRetriever(
         retrievers=[bm25_retriever, vector_retriever],
         weights=[0.5, 0.5],
     )
-    return ensemble_retriever
+
+    compressor = FlashrankRerank(top_n=3)
+
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=ensemble_retriever
+    )
+    return compression_retriever
 
 
 # ================= 💬 检索与回答（不再重写问题） =================
-def ask_question(retriever, current_question):
+def ask_question(compression_retriever, current_question):
     client = ZhipuAI(api_key=ZHIPU_API_KEY, timeout=30.0, max_retries=1)
 
     st.sidebar.info(f"🔍 实际搜索内容：{current_question}")
 
     # ✅ 用传进来的 retriever
-    docs = retriever.invoke(current_question)
+    docs = compression_retriever.invoke(current_question)
     context = "\n\n".join([doc.page_content for doc in docs])
 
     final_prompt = f"""
