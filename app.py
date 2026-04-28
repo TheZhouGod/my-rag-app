@@ -58,7 +58,7 @@ def get_standalone_question(client, history, current_question):
         messages=[{"role": "user", "content": rewrite_prompt}],
         temperature=0.1
     )
-    return response.choices.message.content
+    return response.choices[0].message.content
 
 # ================= 💬 检索与回答 =================
 def ask_question(vector_store, history, current_question):
@@ -115,7 +115,7 @@ if prompt := st.chat_input("你想查阅关于 Pocket 3 的什么信息？（例
 
     with st.chat_message("assistant"):
         with st.spinner("AI 客服正在疯狂翻阅说明书..."):
-            answer = ask_question(my_database, prompt)
+            history_for_rewrite = st.session_state.messages[:-1]
+            answer = ask_question(my_database, history_for_rewrite, prompt)
             st.markdown(answer)
-    st.session_state.messages.append({"role": "user", "content": prompt})
     st.session_state.messages.append({"role": "assistant", "content": answer})
