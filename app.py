@@ -1,5 +1,18 @@
 from dotenv import load_dotenv
 load_dotenv()
+
+import importlib, sys
+st_msgs = []
+for pkg in ["langchain", "langchain_community", "rank_bm25"]:
+    try:
+        m = importlib.import_module(pkg)
+        st_msgs.append(f"{pkg}: {getattr(m, '__version__', '?')}")
+    except Exception as e:
+        st_msgs.append(f"{pkg}: ❌ {e}")
+ 
+import streamlit as st
+st.sidebar.write("\n".join(st_msgs))
+
 import os
 import streamlit as st
 from langchain_text_splitters import (
