@@ -21,7 +21,8 @@ from langchain_text_splitters import (
 )
 from langchain_community.embeddings import ZhipuAIEmbeddings
 from langchain_chroma import Chroma
-from langchain_community.retrievers import BM25Retriever, EnsembleRetriever
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
 from zhipuai import ZhipuAI
 
 # ================= 🔧 基础配置 =================
